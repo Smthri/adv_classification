@@ -8,6 +8,7 @@ import numpy as np
 from datetime import datetime
 import os
 import wandb
+from torchinfo import summary
 
 
 def get_args():
@@ -34,8 +35,8 @@ if __name__ == '__main__':
     args = get_args()
 
     dataset = ImageFolder(args.data_dir, transform=get_transforms())
-    train_dataset, val_dataset = torch.utils.data.random_split(dataset, [16000, 2000], generator=torch.Generator().manual_seed(42))
-    train_loader = torch.utils.data.DataLoader(train_dataset,
+    train_dataset, val_dataset = torch.utils.data.random_split(dataset, [66000, 6000], generator=torch.Generator().manual_seed(42))
+    train_loader = torch.utils.data.DataLoader(dataset,
                                                batch_size=args.batch_size,
                                                shuffle=True,
                                                num_workers=32)
@@ -47,7 +48,7 @@ if __name__ == '__main__':
     wandb.init(project='HE_classifier')
 
     classes = dataset.classes
-    print(f'Loaded train dataset with {len(train_dataset)} images.')
+    print(f'Loaded train dataset with {len(dataset)} images.')
     print(f'Classes: {classes}')
 
     device = torch.device(args.device)
