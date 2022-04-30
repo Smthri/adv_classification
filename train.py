@@ -1,5 +1,5 @@
 import torch
-import torchvision
+import torchvision.models as models
 from torchvision.datasets import ImageFolder
 from tqdm import tqdm
 import argparse
@@ -41,7 +41,7 @@ if __name__ == '__main__':
     val_size = len(dataset) - train_size
     print(f'Train size: {train_size}, Val size: {val_size}')
     train_dataset, val_dataset = torch.utils.data.random_split(dataset, [train_size, val_size], generator=torch.Generator().manual_seed(42))
-    train_loader = torch.utils.data.DataLoader(dataset,
+    train_loader = torch.utils.data.DataLoader(train_dataset,
                                                batch_size=args.batch_size,
                                                shuffle=True,
                                                num_workers=32)
@@ -57,7 +57,8 @@ if __name__ == '__main__':
     print(f'Classes: {classes}')
 
     device = torch.device(args.device)
-    model = torch.hub.load('pytorch/vision:v0.10.0', 'resnet34', pretrained=False)
+    model = models.resnet34(pretrained=False)
+    #model = torch.hub.load('pytorch/vision:v0.10.0', 'resnet34', pretrained=False)
     model.to(device)
 
     criterion = torch.nn.CrossEntropyLoss()
