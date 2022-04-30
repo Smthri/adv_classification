@@ -9,13 +9,15 @@ from datetime import datetime
 import os
 import wandb
 from torchinfo import summary
+from concat_dataset import ConcatDatasets
 
 
 def get_args():
     parser = argparse.ArgumentParser(description='Train a classifier on image folder.')
-    parser.add_argument('--data_dir', required=True, type=str, help='Path to dataset root.')
+    parser.add_argument('data_dir', metavar='data_dirs', nargs='+', type=str, help='Path to dataset roots.')
+    parser.add_argument('--train_size', type=float, default=0.8, help='Factor of train size. Default is 0.8')
     parser.add_argument('--batch_size', type=int, default=32, help='Batch size.')
-    parser.add_argument('--device', type=str, default='cuda:0', help='Device to run on.')
+    parser.add_argument('--device', type=str, default='cuda', help='Device to run on.')
     parser.add_argument('--n_epochs', type=int, default=90, help='Number of epochs.')
     parser.add_argument('--checkpoint_dir', type=str, default='./checkpoints', help='Path to save checkpoints.')
 
@@ -34,8 +36,11 @@ def get_transforms():
 if __name__ == '__main__':
     args = get_args()
 
-    dataset = ImageFolder(args.data_dir, transform=get_transforms())
-    train_dataset, val_dataset = torch.utils.data.random_split(dataset, [66000, 6000], generator=torch.Generator().manual_seed(42))
+    dataset = ConcatDatasets(args.data_dir, transform=get_transforms())
+    train_size = int(len(dataset) * args.train_size)
+    val_size = len(dataset) - train_size
+    print(f'Train size: {train_size}, Val size: {val_size}')
+    train_dataset, val_dataset = torch.utils.data.random_split(dataset, [train_size, val_size], generator=torch.Generator().manual_seed(42))
     train_loader = torch.utils.data.DataLoader(dataset,
                                                batch_size=args.batch_size,
                                                shuffle=True,

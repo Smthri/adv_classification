@@ -12,64 +12,15 @@ import numpy as np
 from advgan import *
 from torchvision.utils import save_image
 from matplotlib import pyplot as plt
-
-
-class AdvHEDataset(torch.utils.data.Dataset):
-    def __init__(self, orig_image_folder, adv_noise_folder=None, factor = 0., transform=None):
-        self.orig_image_folder = Path(orig_image_folder)
-        self.adv_noise_folder = Path(adv_noise_folder) if adv_noise_folder is not None else None
-        self.classes = []#list(range(len([x for x in self.orig_image_folder.iterdir() if x.is_dir()])))
-        self.imgs = []
-        self.noise = []
-        self.transform = transform
-        self.factor = factor
-        for i, child in enumerate(sorted(self.orig_image_folder.iterdir())):
-            self.classes.append(child.name)
-            for name in child.iterdir():
-                if name.is_file():
-                    self.imgs.append((str(name), i))
-        self.counter = 0
-
-    def __len__(self):
-        return len(self.imgs)
-
-    def __getitem__(self, idx):
-        img_name, label = self.imgs[idx]
-        with open(img_name, 'rb') as f:
-            img = Image.open(f).convert("RGB")
-        #img = imread(img_name)
-        if self.transform:
-            img = self.transform(img)
-
-        if self.mode == 'adv':
-            noise_name, _ = self.noise[idx]
-            noise = Image.open(noise_name)
-            #noise = imread(noise_name)
-            if self.transform:
-                noise = self.transform(noise)
-            if self.counter < 0:
-                print(img.shape)
-                self.counter += 1
-                to_save = img.numpy()
-                to_save = np.transpose(to_save - to_save.min(), (1, 2, 0))
-                imsave(f'{label}_{self.counter}.png', to_save / to_save.max() * 255)
-                to_save = (img + self.factor * noise).numpy()
-                to_save = np.transpose(to_save, (1, 2, 0))
-                to_save -= to_save.min()
-                imsave(f'adv_{label}_{self.counter}.png', to_save / to_save.max() * 255)
-
-            img = img + self.factor * noise
-
-        return img, label
+from concat_dataset import ConcatDatasets
 
 
 def get_args():
     parser = argparse.ArgumentParser(description='Test a classifier on image folder.')
-    parser.add_argument('--data_dir', required=True, type=str, help='Path to dataset root.')
-    parser.add_argument('--adv_dir', type=str, default=None, help='Path to adv generator')
-    parser.add_argument('--factor', type=float, default=0, help='Factor of adversarial noise')
+    parser.add_argument('data_dir', metavar='data_dirs', type=str, nargs='+', help='Path to dataset roots.')
+    parser.add_argument('--adv_dir', type=str, default=None, help='Path to adversarial generator. Must accept batches of images.')
     parser.add_argument('--batch_size', type=int, default=32, help='Batch size.')
-    parser.add_argument('--device', type=str, default='cuda:0', help='Device to run on.')
+    parser.add_argument('--device', type=str, default='cuda', help='Device to run on.')
     parser.add_argument('--checkpoint_dir', type=str, default='./checkpoints/best.pth', help='Path to load checkpoint.')
 
     return parser.parse_args()
@@ -86,16 +37,13 @@ def get_transforms():
 if __name__ == '__main__':
     args = get_args()
 
-    #test_dataset = AdvHEDataset(args.data_dir, args.adv_dir, args.factor, get_transforms())
-    test_dataset = ImageFolder(args.data_dir, transform=get_transforms())
+    test_dataset = ConcatDatasets(args.data_dir, transform=get_transforms())
     test_loader = torch.utils.data.DataLoader(test_dataset,
                                               batch_size=args.batch_size,
                                               shuffle=True,
                                               num_workers=8)
 
     classes = test_dataset.classes
-    print(f'Loaded dataset with {len(test_dataset)} images.')
-    print(f'Classes: {classes}')
 
     device = torch.device(args.device)
     model = torch.hub.load('pytorch/vision:v0.10.0', 'resnet34', pretrained=False)
@@ -105,8 +53,6 @@ if __name__ == '__main__':
     
     resize = transforms.Resize(224)
 
-    #print(summary(model, (3, 224, 224), device='cuda'))
-
     correct = 0
     total = len(test_dataset)
     
@@ -114,12 +60,11 @@ if __name__ == '__main__':
         adv_generator = Generator(224, mixed_precision=False)
         adv_generator.load_state_dict(torch.load(args.adv_dir, map_location=torch.device(device)))
         adv_generator.eval()
+        with open('gen_summary.txt', 'w') as f:
+            f.write(str(summary(adv_generator, input_data=[torch.randn(1, 3, 224, 224), torch.Tensor([1])])))
         adv_generator.to(device)
     else:
         adv_generator = None
-        
-    with open('gen_summary.txt', 'w') as f:
-        f.write(str(summary(adv_generator, input_data=[torch.randn(1, 3, 224, 224), torch.Tensor([1])], device='cuda')))
     
     a = 0
     seen = set()
@@ -142,11 +87,6 @@ if __name__ == '__main__':
                 noise = adv_generator(inputs, labels)
                 outputs = model(resize(inputs + noise))
                 outputs = F.softmax(outputs, 1)
-            '''if adv_generator is None:
-                outputs = model(resize(inputs))
-            else:
-                noise = adv_generator(inputs, labels)
-                outputs = model(resize(inputs + noise))'''
 
             conf, preds = torch.max(outputs, 1)
             for label, prediction in zip(labels, preds):
